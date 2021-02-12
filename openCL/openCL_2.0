@@ -1,0 +1,145 @@
+// random function                     
+static uint random(float seed, int idx) {
+    uint s = *(uint*)(&seed);
+    s ^= idx << 3;
+    s *= 179424691;
+    s ^= s << 13 | s >> (32-13);
+    s ^= s >> 17 | s << (32-17);
+    s ^= s << 23;
+    s *= 179424691;
+    s = s % 9;
+    return s;
+}
+
+
+// roadmap x neighbour
+constant int xo[] = {-1, 0, 1,
+                    -1, 0, 1,
+                    -1, 0, 1 };
+// roadmap y neighbour
+constant int yo[] = { 1, 1, 1,
+                    0, 0, 0,
+                    -1,-1,-1 };
+
+kernel void sandDunes( 
+                 int stride_x, 
+                 int stride_y, 
+                 int stride_z, 
+                 int stride_o, 
+                 int res_x, 
+                 int res_y, 
+                 int res_z, 
+                 global float * height ,
+                 global float * mask ,
+                 global float * dir ,
+                 int iter_length, 
+                 global int * iter ,                 
+                 float  treshold ,
+                 float  mass 
+)
+{
+    int gidx = get_global_id(0);
+    int gidy = get_global_id(1);
+    int idx = stride_o + stride_x * gidx
+                       + stride_y * gidy;
+    
+                                   
+    if (mask[idx] <= 0.001) return;
+    
+    int n[]    = { 0, 0, 0,
+                   0, 0, 0,
+                   0, 0, 0 };
+                   
+    dir[idx] = -1;
+    iter[0] = iter[0] + 1;
+    
+    // look up for neighbour idx
+    for(int i=0; i<9; i++)
+    {
+        int x1 = (gidx + xo[i]);
+        int y1 = (gidy + yo[i]);
+        
+        if (x1<0) x1 = 0;
+        if (x1>res_x-1) x1 = res_x-1;
+        if (y1<0) y1 = 0;
+        if (y1>res_y-1) y1 = res_y-1;
+        
+        int ndx = stride_o + stride_x * x1
+                           + stride_y * y1;
+        
+        n[i] = ndx;
+    }
+    
+    for(int i=0; i<9; i++)
+    {
+        float seed = iter[0] + idx;
+        uint randval = random(seed, idx);
+        
+        int nptidx = n[randval];
+        
+        int dif = (height[idx] - height[nptidx]) >= treshold;
+        if (dif)
+        {
+            dir[idx] = randval;
+            height[idx] -= mass * mask[idx];
+            break;
+        }
+    }
+}
+
+kernel void writeBack( 
+                 int stride_x, 
+                 int stride_y, 
+                 int stride_z, 
+                 int stride_o, 
+                 int res_x, 
+                 int res_y, 
+                 int res_z, 
+                 global float * height ,
+                 global float * mask ,
+                 global float * dir ,
+                 int iter_length, 
+                 global int * iter ,                 
+                 float  treshold ,
+                 float  mass 
+)
+{
+    int gidx = get_global_id(0);
+    int gidy = get_global_id(1);
+    int idx = stride_o + stride_x * gidx
+                       + stride_y * gidy;
+    
+                                   
+    if (mask[idx] <= 0.001) return;
+    
+    int n[]  = { 0, 0, 0,
+                 0, 0, 0,
+                 0, 0, 0 };                     
+    
+    // look up for neighbour idx
+    for(int i=0; i<9; i++)
+    {
+        int x1 = (gidx + xo[i]);
+        int y1 = (gidy + yo[i]);
+        
+        if (x1<0) x1 = 0;
+        if (x1>res_x-1) x1 = res_x-1;
+        if (y1<0) y1 = 0;
+        if (y1>res_y-1) y1 = res_y-1;
+        
+        int ndx = stride_o + stride_x * x1
+                           + stride_y * y1;
+        
+        n[i] = ndx;
+    }
+    
+    if (dir[n[0]] == 8) height[idx] += mass * mask[idx];
+    if (dir[n[1]] == 7) height[idx] += mass * mask[idx];
+    if (dir[n[2]] == 6) height[idx] += mass * mask[idx];
+    if (dir[n[3]] == 5) height[idx] += mass * mask[idx];
+    if (dir[n[4]] == 4) height[idx] += mass * mask[idx];
+    if (dir[n[5]] == 3) height[idx] += mass * mask[idx];
+    if (dir[n[6]] == 2) height[idx] += mass * mask[idx];    
+    if (dir[n[7]] == 1) height[idx] += mass * mask[idx];    
+    if (dir[n[8]] == 0) height[idx] += mass * mask[idx];    
+}
